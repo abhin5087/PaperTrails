@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+papertrails.db
+storage/pdfs/*
+storage/json/*
+!storage/pdfs/.gitkeep
+!storage/json/.gitkeep
+.env

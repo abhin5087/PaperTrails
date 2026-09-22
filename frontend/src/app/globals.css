@@ -1,0 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  background-color: #F7F4EC;
+  background-image:
+    linear-gradient(#DEDACB 1px, transparent 1px);
+  background-size: 100% 2.25rem;
+  background-attachment: local;
+}
+
+::selection {
+  background-color: #37517E;
+  color: #F7F4EC;
+}
