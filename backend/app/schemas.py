@@ -28,6 +28,8 @@ class QuestionOut(BaseModel):
     marks_parts: list[int] = []
     marks_resolved: bool = False
     marks_reason: str | None = None
+    #: 'printed' or 'distribution' - where the value came from.
+    marks_source: str = "printed"
 
     recovered_label: bool = False
     module: str | None

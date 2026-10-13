@@ -79,6 +79,11 @@ class TestUploadResponse:
             if question["marks"] is not None:
                 assert question["marks_raw"] is not None
 
+    def test_questions_declare_where_their_marks_came_from(self, uploaded):
+        """A client must be able to tell a printed mark from a derived one."""
+        for question in uploaded["questions"]:
+            assert question["marks_source"] in ("printed", "distribution")
+
     def test_subquestions_declare_their_parent(self, uploaded):
         children = [q for q in uploaded["questions"] if q["parent_no"]]
         assert children

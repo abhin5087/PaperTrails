@@ -38,6 +38,8 @@ export interface QuestionOut {
   marks_parts: number[];
   marks_resolved: boolean;
   marks_reason: string | null;
+  /** 'printed' next to the question, or 'distribution' from a paper-wide banner. */
+  marks_source: string;
   recovered_label: boolean;
   module: string | null;
   co: string | null;

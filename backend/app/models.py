@@ -126,6 +126,10 @@ class Question(Base):
     marks_resolved: Mapped[bool] = mapped_column(Boolean, default=False)
     marks_reason: Mapped[str | None] = mapped_column(String(255))
 
+    # 'printed' when the value was written next to the question,
+    # 'distribution' when the paper stated it once for every question.
+    marks_source: Mapped[str] = mapped_column(String(16), default="printed")
+
     # True when the label had to be reconstructed from damaged text.
     recovered_label: Mapped[bool] = mapped_column(Boolean, default=False)
 

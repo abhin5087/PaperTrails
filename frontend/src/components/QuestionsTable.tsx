@@ -8,11 +8,27 @@ import type { QuestionOut } from "@/lib/types";
 function Marks({ question }: { question: QuestionOut }) {
   if (question.marks !== null) {
     const split = question.marks_parts.length > 1;
+    const derived = question.marks_source === "distribution";
+
     return (
-      <span className="tabular-nums text-ink" title={split ? question.marks_raw ?? "" : undefined}>
+      <span
+        className="tabular-nums text-ink"
+        title={
+          derived
+            ? question.marks_reason ?? ""
+            : split
+              ? question.marks_raw ?? ""
+              : undefined
+        }
+      >
         {question.marks}
-        {split && (
+        {split && !derived && (
           <span className="ml-1 text-xs text-graphite">({question.marks_raw})</span>
+        )}
+        {/* A value the paper stated once for every question is marked, so it
+            is never mistaken for one printed beside this question. */}
+        {derived && (
+          <span className="ml-1 cursor-help text-xs text-graphite">(stated)</span>
         )}
       </span>
     );

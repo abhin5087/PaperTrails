@@ -156,6 +156,20 @@ class TestBhum103lMarks:
             if question.marks.resolved:
                 assert question.marks.raw is not None
 
+    def test_marks_source_survives_persistence(self, bhum, client):
+        """The provenance of a mark must reach the API, not stop at extraction."""
+        with open(bhum["path"], "rb") as handle:
+            response = client.post(
+                "/api/upload",
+                files={"file": (bhum["path"].name, handle, "application/pdf")},
+            )
+        assert response.status_code == 200, response.text
+
+        expected = "distribution" if bhum["is_real"] else "printed"
+        tops = [q for q in response.json()["questions"] if not q["parent_no"]]
+        assert tops
+        assert {q["marks_source"] for q in tops} == {expected}
+
 
 class TestBhum103lDiagnostics:
     def test_ocr_is_reported_as_having_run(self, bhum):

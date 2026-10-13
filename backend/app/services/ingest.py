@@ -110,6 +110,7 @@ def run_pipeline(db: Session, file_bytes: bytes, original_filename: str) -> Pape
                 marks_parts=row["marks_parts"],
                 marks_resolved=row["marks_resolved"],
                 marks_reason=row["marks_reason"],
+                marks_source=row.get("marks_source", "printed"),
                 recovered_label=row["recovered_label"],
                 module=row.get("module"),
                 co=row.get("co"),
