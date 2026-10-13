@@ -28,8 +28,9 @@ def native_lines(pdf):
 
 
 @pytest.fixture
-def networks(bcse308l_pdf):
-    path, _ = bcse308l_pdf
+def networks(vector_pdf):
+    """Vector-detector mechanics, on the fixture with exact known geometry."""
+    path = vector_pdf
     with pdfplumber.open(path) as pdf:
         lines = native_lines(pdf)
         figures = detect_figures(pdf, lines=lines)
@@ -139,25 +140,23 @@ class TestCropping:
 
 
 class TestPapersWithoutFigures:
-    def test_a_text_only_scan_reports_no_figures(self, bhum103l_pdf):
+    def test_a_text_only_scan_reports_no_figures(self, generated_pdfs):
         """Header text must never be reported as a diagram."""
         from app.services import pipeline
 
-        path, _ = bhum103l_pdf
-        result = pipeline.extract(str(path))
+        result = pipeline.extract(str(generated_pdfs["bhum103l"]))
         assert result.figures == []
 
-    def test_question_extraction_is_unaffected(self, bhum103l_pdf):
+    def test_question_extraction_is_unaffected(self, generated_pdfs):
         from app.services import pipeline
 
-        path, _ = bhum103l_pdf
-        result = pipeline.extract(str(path))
+        result = pipeline.extract(str(generated_pdfs["bhum103l"]))
         assert len(result.questions) == 5
 
 
 class TestFullPageImageIsNotAFigure:
-    def test_page_scan_is_excluded(self, bhum103l_pdf):
-        path, _ = bhum103l_pdf
+    def test_page_scan_is_excluded(self, generated_pdfs):
+        path = generated_pdfs["bhum103l"]
         with pdfplumber.open(path) as pdf:
             assert len(pdf.pages[0].images) >= 1  # the scan itself
             figures = detect_figures(pdf, lines=[])

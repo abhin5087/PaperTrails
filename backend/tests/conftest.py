@@ -26,8 +26,13 @@ REAL_PDF_DIR = FIXTURE_DIR / "pdfs"
 GENERATED_DIR = FIXTURE_DIR / "generated"
 
 #: Real file name -> generated surrogate name.
+#:
+#: The BHUM103L paper supplied is the Final Assessment Test for slot A1,
+#: 2023-2024 - a different sitting from the CAT-1 paper the surrogate models.
+#: The golden expectations follow whichever file is actually in use, which is
+#: why ``golden_expectations`` below is keyed on that.
 GOLDEN_PAPERS = {
-    "bhum103l": ("BHUM103L-CAT-1-F2-2024-2025.pdf", "synthetic_bhum103l_scanned.pdf"),
+    "bhum103l": ("BHUM103L-FAT-A1-2023-2024.pdf", "synthetic_bhum103l_scanned.pdf"),
     "bcse308l": ("BCSE308L-FAT-C2-2022-2023.pdf", "synthetic_bcse308l_networks.pdf"),
 }
 
@@ -75,6 +80,17 @@ def bcse308l_pdf(generated_pdfs) -> tuple[Path, bool]:
 @pytest.fixture(scope="session")
 def bcse308l_scanned_pdf(generated_pdfs) -> Path:
     return generated_pdfs["bcse308l_scanned"]
+
+
+@pytest.fixture(scope="session")
+def vector_pdf(generated_pdfs) -> Path:
+    """The generated vector paper.
+
+    Detector *mechanics* are tested against this deliberately, never against a
+    real scan: it is the only fixture with known-exact geometry, so a failure
+    here means the code changed rather than the paper.
+    """
+    return generated_pdfs["bcse308l"]
 
 
 @pytest.fixture

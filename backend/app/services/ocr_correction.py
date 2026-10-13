@@ -125,6 +125,18 @@ CORRECTION_DICTIONARY: dict[str, str] = {
     "suitahle": "suitable",
     "diagrarn": "diagram",
     "diagrani": "diagram",
+    # Observed in the supplied VIT scans.
+    "diferentiate": "differentiate",
+    "diflerentiate": "differentiate",
+    "difterentiate": "differentiate",
+    "progarme": "programme",
+    "programe": "programme",
+    "nanme": "name",
+    "coerse": "course",
+    "itle": "title",
+    "ropagation": "propagation",
+    "jamming": "jamming",
+    "acknowlcdgeienis": "acknowledgements",
 }
 
 #: Character confusions Tesseract makes.  Each is tried on its own; a
@@ -272,6 +284,13 @@ def _candidates(word: str) -> list[tuple[str, str]]:
 
     for char in LEADING_RESTORE:
         out.append((char + word, f"leading_restore:{char}"))
+
+    # OCR inserts a spurious character ("NETIWORKS" for "NETWORKS").  Each
+    # single deletion is offered as a candidate; as with every other rule it
+    # only survives if the lexicon recognises exactly one result.
+    if len(word) > MIN_CORRECTABLE_LENGTH:
+        for index in range(len(word)):
+            out.append((word[:index] + word[index + 1:], "drop_char"))
 
     return out
 

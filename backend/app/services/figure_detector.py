@@ -32,6 +32,40 @@ FULL_PAGE_IMAGE_RATIO = 0.65
 #: Smallest figure worth reporting, as a fraction of page area.
 MIN_FIGURE_AREA_RATIO = 0.01
 
+#: Largest an *ink* region may be before it is the page rather than a
+#: figure.  A noisy scan leaves dark pixels between every line, which can
+#: merge into one band spanning the sheet; reporting that as a diagram is
+#: wrong, and letting it through would mask the whole page as figure content.
+MAX_INK_AREA_RATIO = 0.5
+
+#: An ink region taller than this share of the page is likewise the page.
+MAX_INK_HEIGHT_RATIO = 0.8
+
+#: The ink detector works by removing everything the text layer explains
+#: and treating the remainder as diagram.  That only holds when the text
+#: boxes actually line up with the rendered page - some scanned PDFs carry
+#: a text layer whose coordinates do not match the image at all.  Below
+#: this share of ink explained, the detector cannot tell a diagram from a
+#: paragraph, so it declines instead of reporting text as figures.
+MIN_MASK_EFFECTIVENESS = 0.05
+
+#: A photocopied page is grey, creased and shadowed.  Only genuinely dark
+#: pixels count as ink, otherwise blank paper reads as a diagram.
+INK_THRESHOLD = 140
+
+#: A real diagram covers a reasonable share of its own bounding box with
+#: ink; a shadow over empty paper does not.
+MIN_REGION_INK_DENSITY = 0.03
+
+#: A figure has vertical extent.  A thin wide strip is a page edge, a rule
+#: or a shadow along the binding, never a diagram.  Expressed in points so
+#: it does not vary with page size.
+MIN_INK_HEIGHT_PT = 20.0
+
+#: Within a candidate band, text boxes covering more than this share of
+#: the area mean the band is a block of prose, not a diagram.
+MAX_BAND_TEXT_COVERAGE = 0.25
+
 #: Gap (PDF points) below which two drawing objects join one figure.
 CLUSTER_GAP = 26.0
 
@@ -212,10 +246,14 @@ def _ink_figures(image, page_no: int, word_boxes: list[tuple[float, float, float
         return []
 
     data = np.asarray(grey, dtype=np.uint8)
-    ink = data < 190  # dark pixels
+    ink = data < INK_THRESHOLD  # genuinely dark pixels, not page shadow
+    total_ink = int(ink.sum())
+    if not total_ink:
+        return []
 
-    # Blank out everything OCR already explained as text.
+    # Blank out everything the text layer already explains.
     sx, sy = px_w / page_width, px_h / page_height
+    text_mask = np.zeros_like(ink)
     for x0, top, x1, bottom in word_boxes:
         cx0 = max(0, int(x0 * sx) - 2)
         cx1 = min(px_w, int(x1 * sx) + 2)
@@ -223,6 +261,18 @@ def _ink_figures(image, page_no: int, word_boxes: list[tuple[float, float, float
         cy1 = min(px_h, int(bottom * sy) + 2)
         if cx1 > cx0 and cy1 > cy0:
             ink[cy0:cy1, cx0:cx1] = False
+            text_mask[cy0:cy1, cx0:cx1] = True
+
+    # If the text boxes explain almost none of the ink they do not line up
+    # with this page, and every paragraph would be reported as a diagram.
+    effectiveness = 1.0 - (int(ink.sum()) / total_ink)
+    if effectiveness < MIN_MASK_EFFECTIVENESS:
+        logger.debug(
+            "Skipping ink detection on page %s: text layer explains only "
+            "%.0f%% of the ink, so its coordinates do not match the image.",
+            page_no, effectiveness * 100,
+        )
+        return []
 
     row_ink = ink.sum(axis=1)
     # A row counts as part of a figure when a non-trivial share of it is ink.
@@ -245,18 +295,21 @@ def _ink_figures(image, page_no: int, word_boxes: list[tuple[float, float, float
             blanks += 1
             if blanks > gap_rows:
                 figures.extend(
-                    _band_to_figure(ink, start, y - blanks, page_no, sx, sy, px_w)
+                    _band_to_figure(ink, start, y - blanks, page_no, sx, sy, px_w,
+                                    text_mask)
                 )
                 start, blanks = None, 0
 
     if start is not None:
-        figures.extend(_band_to_figure(ink, start, px_h - 1, page_no, sx, sy, px_w))
+        figures.extend(
+            _band_to_figure(ink, start, px_h - 1, page_no, sx, sy, px_w, text_mask)
+        )
 
     return figures
 
 
 def _band_to_figure(ink, y0: int, y1: int, page_no: int, sx: float, sy: float,
-                    px_w: int) -> list[Figure]:
+                    px_w: int, text_mask=None) -> list[Figure]:
     """Turn a horizontal ink band into a figure box with tight columns."""
     import numpy as np
 
@@ -273,6 +326,17 @@ def _band_to_figure(ink, y0: int, y1: int, page_no: int, sx: float, sy: float,
     if x_end - x_start < px_w * 0.05:
         return []
 
+    # A band that is mostly text boxes is a paragraph, not a diagram.
+    if text_mask is not None:
+        region = text_mask[y0 : y1 + 1, x_start : x_end + 1]
+        if region.size and region.mean() > MAX_BAND_TEXT_COVERAGE:
+            return []
+
+    # A band with almost no ink in it is a shadow over blank paper.
+    inked = band[:, x_start : x_end + 1]
+    if inked.size and inked.mean() < MIN_REGION_INK_DENSITY:
+        return []
+
     return [
         Figure(
             page=page_no,
@@ -282,6 +346,8 @@ def _band_to_figure(ink, y0: int, y1: int, page_no: int, sx: float, sy: float,
             bottom=y1 / sy,
             kind="ink",
             detector="ink:unexplained-region",
+            note="approximate region: isolated from the page image, so it may "
+                 "include nearby text or omit part of the figure",
         )
     ]
 
@@ -515,16 +581,59 @@ def detect_figures(pdf, *, page_images=None, lines=None,
                                  float(page.width), float(page.height))
                 )
 
-    # Drop anything too small to be a real figure.
+    # Drop anything too small to be a real figure, and any ink region so
+    # large it is really just the page.
     kept: list[Figure] = []
     for figure in found:
         page = pdf.pages[figure.page - 1]
-        page_area = float(page.width) * float(page.height)
+        page_width, page_height = float(page.width), float(page.height)
+        page_area = page_width * page_height
         ratio = (figure.width * figure.height) / page_area if page_area else 0.0
+
         if ratio < MIN_FIGURE_AREA_RATIO:
             continue
+
+        if figure.kind == "ink":
+            height_ratio = figure.height / page_height if page_height else 0.0
+            if figure.height < MIN_INK_HEIGHT_PT:
+                logger.debug(
+                    "Discarding thin ink strip on page %s (height %.0fpt)",
+                    figure.page, figure.height,
+                )
+                continue
+            if ratio > MAX_INK_AREA_RATIO or height_ratio > MAX_INK_HEIGHT_RATIO:
+                logger.debug(
+                    "Discarding page-sized ink region on page %s (area %.2f, "
+                    "height %.2f)", figure.page, ratio, height_ratio,
+                )
+                continue
+
         figure.area_ratio = ratio
         kept.append(figure)
+
+    kept.sort(key=lambda f: (f.page, f.top, f.x0))
+    return _drop_duplicate_detections(kept)
+
+
+#: Detector precedence when two of them find the same drawing: exact geometry
+#: beats an embedded image, which beats a region guessed from pixels.
+_DETECTOR_RANK = {"vector": 0, "image": 1, "ink": 2}
+
+
+def _drop_duplicate_detections(figures: list[Figure]) -> list[Figure]:
+    """Remove an ink region that merely re-finds a figure already detected."""
+    kept: list[Figure] = []
+
+    for figure in sorted(figures, key=lambda f: _DETECTOR_RANK.get(f.kind, 9)):
+        duplicate = False
+        for existing in kept:
+            if existing.page != figure.page:
+                continue
+            if _overlaps(figure, existing, gap=0.0):
+                duplicate = True
+                break
+        if not duplicate:
+            kept.append(figure)
 
     kept.sort(key=lambda f: (f.page, f.top, f.x0))
     return kept

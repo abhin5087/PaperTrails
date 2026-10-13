@@ -50,6 +50,11 @@ class Marks:
     resolved: bool = False
     reason: str | None = None
 
+    #: Where the value came from. ``printed`` means it was written next to
+    #: the question; ``distribution`` means the paper stated it once for
+    #: every question ("10 X 10 = 100 Marks").  Never a guess either way.
+    source: str = "printed"
+
     @property
     def is_split(self) -> bool:
         return len(self.parts) > 1
@@ -61,6 +66,7 @@ class Marks:
             "marks_parts": list(self.parts),
             "marks_resolved": self.resolved,
             "marks_reason": self.reason,
+            "marks_source": self.source,
         }
 
     @classmethod
@@ -248,3 +254,21 @@ def combine(children: list[Marks]) -> Marks:
     if total > MAX_QUESTION_MARKS:
         return Marks.unresolved(raw, f"subquestion total {total} is implausible")
     return Marks(raw=raw, total=total, parts=parts, resolved=True)
+
+
+def from_distribution(each: int, raw: str) -> Marks:
+    """A per-question value the paper stated once for the whole paper.
+
+    This is reading the paper, not guessing: a banner such as
+    ``(10 X 10 = 100 Marks)`` says every one of the ten questions is worth
+    ten.  The caller is responsible for checking that the question count
+    actually matches the banner before applying it.
+    """
+    return Marks(
+        raw=raw,
+        total=each,
+        parts=[each],
+        resolved=True,
+        reason=f"from the paper's stated distribution '{raw}'",
+        source="distribution",
+    )

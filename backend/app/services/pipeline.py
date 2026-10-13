@@ -25,6 +25,7 @@ import pdfplumber
 
 from . import figure_detector, ocr as ocr_service, ocr_correction
 from .confidence import ExtractionSummary
+from .marks import from_distribution
 from .header import Header, parse_header
 from .questions import Classified, Line, Question, extract_questions
 
@@ -93,8 +94,14 @@ def _page_one_text(lines: list[Line]) -> str:
     return "\n".join(ln.text for ln in lines if ln.page == 1)
 
 
-def build_native_candidate(pdf, figure_spans=None) -> Candidate:
-    """The PDF's own text layer."""
+def build_native_candidate(pdf, figure_spans=None, pdf_type: str = "vector") -> Candidate:
+    """The PDF's own text layer.
+
+    When that layer was itself produced by OCR - a scan shipped with a text
+    layer, which is what ``ocr_text`` means - it carries OCR damage and gets
+    the same conservative correction pass as text we OCR ourselves.  A true
+    vector PDF's text is exact and is never rewritten.
+    """
     lines = _native_lines(pdf)
     candidate = Candidate(name="native", source="native_text", lines=lines)
 
@@ -102,6 +109,20 @@ def build_native_candidate(pdf, figure_spans=None) -> Candidate:
         candidate.available = False
         candidate.error = "no text layer"
         return candidate
+
+    if pdf_type == "ocr_text":
+        corrected: list[Line] = []
+        count = 0
+        for line in lines:
+            fixed = ocr_correction.correct_text(line.text)
+            count += len(fixed.corrections)
+            corrected.append(
+                Line(text=fixed.corrected_text, page=line.page, index=line.index,
+                     x0=line.x0, top=line.top, bottom=line.bottom, x1=line.x1)
+            )
+        lines = corrected
+        candidate.lines = lines
+        candidate.corrections = count
 
     candidate.first_page_text = _page_one_text(lines)
     if len(candidate.first_page_text) < MIN_NATIVE_CHARS:
@@ -302,6 +323,44 @@ class ExtractionResult:
         return self.candidate.name if self.candidate else "none"
 
 
+def apply_distribution_marks(header: Header, questions: list[Question]) -> bool:
+    """Apply a paper-wide marks banner when nothing else states the marks.
+
+    Some papers print the marks once - ``(10 X 10 = 100 Marks)`` - instead of
+    beside each question.  That banner is the paper stating the value, so it
+    is used, but only when it cannot be wrong:
+
+    * the banner is self-consistent (checked when the header was parsed),
+    * the paper has exactly as many top-level questions as the banner counts,
+    * and not one question carries printed marks of its own.
+
+    If any question has its own marks, the banner is ignored entirely - the
+    printed values are the better evidence and mixing the two would invent
+    numbers for whatever was missing.
+    """
+    distribution = header.get("marks_distribution")
+    if not distribution or not questions:
+        return False
+
+    try:
+        count_text, each_text = distribution.lower().split("x")
+        count, each = int(count_text), int(each_text)
+    except (ValueError, AttributeError):
+        return False
+
+    if count != len(questions):
+        return False
+
+    if any(q.marks.raw is not None for q in questions):
+        return False
+
+    raw = header.fields["marks_distribution"].raw
+    for question in questions:
+        question.marks = from_distribution(each, raw)
+
+    return True
+
+
 def detect_pdf_type(pdf) -> str:
     """vector | ocr_text | scanned, from page-one geometry."""
     page = pdf.pages[0]
@@ -326,7 +385,7 @@ def extract(pdf_path: str, *, figures_dir: Path | None = None) -> ExtractionResu
             i + 1: (float(p.width), float(p.height)) for i, p in enumerate(pdf.pages)
         }
 
-        native = build_native_candidate(pdf)
+        native = build_native_candidate(pdf, pdf_type=pdf_type)
         candidates: list[Candidate] = [native]
 
         # OCR is attempted whenever the text layer is unusable, and also when
@@ -344,6 +403,17 @@ def extract(pdf_path: str, *, figures_dir: Path | None = None) -> ExtractionResu
                 except ocr_service.OcrUnavailable as exc:
                     logger.warning("Rasterisation failed: %s", exc)
             candidates.extend(build_ocr_candidates(path, page_images=page_images))
+        elif pdf_type == "ocr_text":
+            # The text layer is good enough to use, but the page is still a
+            # picture: any diagram on it exists only in that picture, so the
+            # page is rendered for figure detection even though OCR is not
+            # needed for the text.
+            try:
+                page_images = ocr_service.render_pages(
+                    path, figure_detector.CROP_DPI
+                )
+            except ocr_service.OcrUnavailable as exc:
+                logger.warning("Rasterisation for figures failed: %s", exc)
 
         chosen = select_candidate(candidates)
 
@@ -354,21 +424,37 @@ def extract(pdf_path: str, *, figures_dir: Path | None = None) -> ExtractionResu
             pdf,
             page_images=page_images,
             lines=lines,
-            use_ink_detector=(pdf_type == "scanned" and page_images is not None),
+            use_ink_detector=(
+                pdf_type in ("scanned", "ocr_text") and page_images is not None
+            ),
         )
         figure_detector.grow_to_labels(figures, lines)
         figure_detector.attach_captions(figures, lines)
 
     # Re-run boundary detection with the figure regions known, so that
     # anything sitting inside a diagram can no longer open a question.
+    #
+    # A figure region is only allowed to *refine* the result.  An
+    # over-large or misplaced region would otherwise mask real question
+    # text, so the re-run is discarded unless it keeps every question the
+    # first pass found.
     if chosen is not None and figures:
         spans = [(f.page, f.top, f.bottom, f.x0, f.x1) for f in figures]
-        chosen.questions, chosen.classified = extract_questions(
+        refined, refined_classified = extract_questions(
             chosen.lines, figure_spans=spans
         )
+        if len(refined) >= len(chosen.questions):
+            chosen.questions, chosen.classified = refined, refined_classified
+        else:
+            logger.warning(
+                "Figure regions would have dropped %s of %s questions on %s; "
+                "keeping the unrefined extraction.",
+                len(chosen.questions) - len(refined), len(chosen.questions), path,
+            )
 
     if chosen is not None:
         figure_detector.associate_with_questions(figures, chosen.questions)
+        apply_distribution_marks(chosen.header, chosen.questions)
 
     crop_attempted = figures_dir is not None and bool(figures)
     if crop_attempted:

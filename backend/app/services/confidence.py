@@ -86,6 +86,9 @@ MARKS_WEIGHT = 25
 TEXT_WEIGHT = 13
 SOURCE_WEIGHT = 10
 
+#: An extraction with unresolved fields cannot score above this.
+UNRESOLVED_CEILING = 90
+
 
 def _header_component(header, diagnostics: list[Diagnostic]) -> int:
     present = [f for f in HEADER_FIELDS if header.has(f)]
@@ -511,9 +514,12 @@ def score(*, header, questions, max_marks: int | None,
     total = max(0, min(100, sum(breakdown.values())))
 
     # An extraction holding unresolved material must not read as complete.
+    # The adjustment is recorded as its own component so the breakdown always
+    # explains the score rather than quietly disagreeing with it.
     unresolved = [d for d in diagnostics if d.severity in (ERROR, UNRESOLVED)]
-    if unresolved and total > 90:
-        total = 90
+    if unresolved and total > UNRESOLVED_CEILING:
+        breakdown["unresolved_cap"] = UNRESOLVED_CEILING - total
+        total = UNRESOLVED_CEILING
 
     diagnostics.sort(key=lambda d: (SEVERITY_ORDER.get(d.severity, 9), d.code))
 

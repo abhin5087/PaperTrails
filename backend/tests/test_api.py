@@ -180,13 +180,15 @@ class TestLookupErrors:
 class TestScannedPaper:
     @pytest.mark.slow
     def test_scanned_upload_persists_ocr_metadata(self, client, bhum103l_pdf):
-        path, _ = bhum103l_pdf
+        path, is_real = bhum103l_pdf
         paper = upload(client, path).json()
         assert paper["pdf_type"] == "scanned"
         assert paper["ocr_engine"] == "tesseract"
         assert paper["ocr_config"]
         assert paper["ocr_confidence"] > 0
-        assert paper["question_count"] == 5
+        # The real file is the 10-question FAT sitting; the surrogate models
+        # the 5-question CAT-1 sitting.
+        assert paper["question_count"] == (10 if is_real else 5)
 
         again = client.get(f"/api/papers/{paper['id']}").json()
         assert again["ocr_confidence"] == paper["ocr_confidence"]

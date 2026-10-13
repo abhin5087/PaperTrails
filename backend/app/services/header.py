@@ -194,6 +194,12 @@ def _read_course_code(header: Header, text: str, compressed: str) -> None:
 _COURSE_NAME = (
     r"Course\s*(?:Title|Name)\s*[:\-]?\s*([^\n]{2,80})",
     r"Subject\s*(?:Title|Name)\s*[:\-]?\s*([^\n]{2,80})",
+    # OCR commonly eats the first letter of a label word ("Coerse itle" for
+    # "Course Title").  The title is the text between that damaged label and
+    # the course code that follows it on the same line, so anchoring on
+    # "Course Code" recovers it without having to read the label itself.
+    r"\b[Tt]?itle\s*[:\-]?\s*([A-Z][A-Za-z0-9 &/.\-]{2,60}?)\s+Course\s*Code\b",
+    r"\b[Tt]?itle\s*[:\-]?\s*([A-Z][A-Za-z0-9 &/.\-]{2,60})",
 )
 
 # Labels that mark the start of the *next* field on the same line.
@@ -379,6 +385,10 @@ def _read_max_marks(header: Header, text: str, compressed: str) -> None:
             if product == int(stated):
                 expr_value = product
                 expr_raw = expr.group(0).strip()
+                # Keep the components: "10 X 10 = 100" also says that each of
+                # ten questions is worth ten, which a paper may state only here.
+                header.set("marks_distribution", f"{int(count)}x{int(each)}",
+                           expr_raw, "expression")
 
     if expr_value is not None and (plain_value is None or plain_value != expr_value):
         # A self-consistent "a X b = c" is stronger evidence than a single
