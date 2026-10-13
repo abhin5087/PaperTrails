@@ -114,6 +114,17 @@ cover its own labels, cropped to a PNG under `backend/storage/figures/`, and
 attributed to the question it sits under. Crops are served from
 `/api/figures/{id}/image`.
 
+## Validation against the supplied papers
+
+`validation/` in the distributed archive holds the actual output of running
+this code against the two real examination PDFs: the full test run, a complete
+extraction dump per paper, the migration check, browser screenshots and the
+figure crops. `validation/VALIDATION_RESULTS.md` summarises it, including the
+known limitations.
+
+Note the BHUM103L fixture is the **Final Assessment Test for slot A1,
+2023-2024** (ten questions, 100 marks), not the CAT-1 sitting.
+
 ## Tests
 
 ```bash
