@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     DateTime,
     Float,
     ForeignKey,
@@ -58,10 +59,30 @@ class Paper(Base):
     duration: Mapped[str | None] = mapped_column(String(64))
     exam_date: Mapped[str | None] = mapped_column(String(32))
 
+    exam_time: Mapped[str | None] = mapped_column(String(64))
+    course_name_raw: Mapped[str | None] = mapped_column(String(255))
+
     marks_extracted: Mapped[int] = mapped_column(Integer, default=0)
     confidence: Mapped[int] = mapped_column(Integer, default=0)
     confidence_breakdown: Mapped[dict] = mapped_column(JSON, default=dict)
+
+    # Human-readable messages, kept for backward compatibility with the
+    # original API shape.
     notes: Mapped[list] = mapped_column(JSON, default=list)
+
+    # Typed diagnostics: [{code, severity, message, field}].
+    diagnostics: Mapped[list] = mapped_column(JSON, default=list)
+
+    # Header fields with their raw text and how each was read.
+    header_detail: Mapped[dict] = mapped_column(JSON, default=dict)
+
+    # Which extraction candidates were tried, their scores, and which won.
+    extraction_detail: Mapped[dict] = mapped_column(JSON, default=dict)
+
+    ocr_engine: Mapped[str | None] = mapped_column(String(64))
+    ocr_config: Mapped[str | None] = mapped_column(String(64))
+    ocr_confidence: Mapped[float | None] = mapped_column(Float)
+    page_count: Mapped[int] = mapped_column(Integer, default=0)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
@@ -70,6 +91,11 @@ class Paper(Base):
         back_populates="paper",
         cascade="all, delete-orphan",
         order_by="Question.id",
+    )
+    figures: Mapped[list["Figure"]] = relationship(
+        back_populates="paper",
+        cascade="all, delete-orphan",
+        order_by="Figure.id",
     )
 
 
@@ -81,8 +107,28 @@ class Question(Base):
         ForeignKey("papers.id", ondelete="CASCADE"), index=True
     )
     question_no: Mapped[str] = mapped_column(String(16))
+
+    # Set on a subquestion; ``None`` on a top-level question.
+    parent_no: Mapped[str | None] = mapped_column(String(16), index=True)
+
     text: Mapped[str] = mapped_column(Text)
+
+    # Resolved total.  ``None`` means the marks could not be read with
+    # confidence - never a guess.
     marks: Mapped[int | None] = mapped_column(Integer)
+
+    # Exactly what the paper printed, preserved even when unresolved.
+    marks_raw: Mapped[str | None] = mapped_column(String(32))
+
+    # Component values of a split mark, e.g. [5, 5] for "5+5".
+    marks_parts: Mapped[list] = mapped_column(JSON, default=list)
+
+    marks_resolved: Mapped[bool] = mapped_column(Boolean, default=False)
+    marks_reason: Mapped[str | None] = mapped_column(String(255))
+
+    # True when the label had to be reconstructed from damaged text.
+    recovered_label: Mapped[bool] = mapped_column(Boolean, default=False)
+
     module: Mapped[str | None] = mapped_column(String(16))
     co: Mapped[str | None] = mapped_column(String(16))
     bl: Mapped[str | None] = mapped_column(String(16))
@@ -135,3 +181,39 @@ class TopicCluster(Base):
 
     course: Mapped[Course] = relationship(back_populates="topic_clusters")
     questions: Mapped[list[Question]] = relationship(back_populates="cluster")
+
+
+class Figure(Base):
+    """A detected figure, diagram or table and the question it belongs to."""
+
+    __tablename__ = "figures"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    paper_id: Mapped[int] = mapped_column(
+        ForeignKey("papers.id", ondelete="CASCADE"), index=True
+    )
+
+    page: Mapped[int] = mapped_column(Integer)
+
+    # Which question this figure sits under; ``None`` when it could not be
+    # attributed to one.
+    question_no: Mapped[str | None] = mapped_column(String(16), index=True)
+
+    kind: Mapped[str] = mapped_column(String(16))  # vector | image | ink
+    detector: Mapped[str | None] = mapped_column(String(32))
+    caption: Mapped[str | None] = mapped_column(Text)
+
+    x0: Mapped[float] = mapped_column(Float)
+    top: Mapped[float] = mapped_column(Float)
+    x1: Mapped[float] = mapped_column(Float)
+    bottom: Mapped[float] = mapped_column(Float)
+    area_ratio: Mapped[float | None] = mapped_column(Float)
+
+    image_path: Mapped[str | None] = mapped_column(String(512))
+    width_px: Mapped[int | None] = mapped_column(Integer)
+    height_px: Mapped[int | None] = mapped_column(Integer)
+    note: Mapped[str | None] = mapped_column(String(255))
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    paper: Mapped[Paper] = relationship(back_populates="figures")
