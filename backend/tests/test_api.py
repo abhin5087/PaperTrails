@@ -209,3 +209,63 @@ class TestOptionalFields:
             "diagnostics", "figures", "header_detail", "extraction_detail",
         }
         assert required_keys <= set(uploaded)
+
+
+class TestFigureSerialization:
+    """Merged figures must reach the API intact and without duplicates."""
+
+    def test_each_figure_appears_once(self, uploaded):
+        ids = [f["id"] for f in uploaded["figures"]]
+        assert len(ids) == len(set(ids))
+
+    def test_no_two_stored_figures_describe_the_same_region(self, client, uploaded,
+                                                            db_session):
+        from app.models import Figure
+        from app.services import figure_geometry as geo
+
+        rows = db_session.query(Figure).filter(
+            Figure.paper_id == uploaded["id"]).all()
+        for i, a in enumerate(rows):
+            for b in rows[i + 1:]:
+                if a.page != b.page:
+                    continue
+                overlap = geo.describe((a.x0, a.top, a.x1, a.bottom),
+                                       (b.x0, b.top, b.x1, b.bottom))
+                assert overlap.containment < 0.6, "duplicate region persisted"
+
+    def test_provenance_is_exposed(self, uploaded):
+        for figure in uploaded["figures"]:
+            assert figure["sources"], "figure lost its detector provenance"
+            assert isinstance(figure["clipped_edges"], list)
+
+    def test_question_links_point_at_real_questions(self, uploaded):
+        labels = {q["question_no"] for q in uploaded["questions"]}
+        for figure in uploaded["figures"]:
+            if figure["question_no"] is not None:
+                assert figure["question_no"] in labels
+
+    def test_grouping_is_stable_across_reloads(self, client, uploaded):
+        """Reopening the paper must produce the same grouping."""
+        first = [(f["question_no"], f["page"], f["image_url"])
+                 for f in uploaded["figures"]]
+        again = client.get(f"/api/papers/{uploaded['id']}").json()
+        second = [(f["question_no"], f["page"], f["image_url"])
+                  for f in again["figures"]]
+        assert first == second
+
+    def test_reprocessing_the_same_pdf_gives_the_same_figures(self, client,
+                                                              bcse308l_pdf):
+        path, _ = bcse308l_pdf
+        shapes = []
+        for _ in range(2):
+            with open(path, "rb") as handle:
+                response = client.post(
+                    "/api/upload",
+                    files={"file": (path.name, handle, "application/pdf")},
+                )
+            assert response.status_code == 200
+            shapes.append([
+                (f["page"], f["question_no"], f["kind"])
+                for f in response.json()["figures"]
+            ])
+        assert shapes[0] == shapes[1]

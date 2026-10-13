@@ -1,4 +1,5 @@
-import type { QuestionOut } from "@/lib/types";
+import { Image as ImageIcon } from "lucide-react";
+import type { FigureOut, QuestionOut } from "@/lib/types";
 
 /** What to show in the marks column.
  *
@@ -48,7 +49,24 @@ function Marks({ question }: { question: QuestionOut }) {
   return <span className="text-graphite">{"—"}</span>;
 }
 
-export default function QuestionsTable({ questions }: { questions: QuestionOut[] }) {
+export default function QuestionsTable({
+  questions,
+  figures = [],
+}: {
+  questions: QuestionOut[];
+  figures?: FigureOut[];
+}) {
+  // How many figures each question owns, so the table shows which questions
+  // have a diagram instead of leaving the reader to scroll and match captions.
+  const figureCounts = new Map<string, number>();
+  for (const figure of figures) {
+    if (!figure.question_no) continue;
+    figureCounts.set(
+      figure.question_no,
+      (figureCounts.get(figure.question_no) ?? 0) + 1,
+    );
+  }
+
   if (!questions || questions.length === 0) {
     return (
       <div className="border border-dashed border-paper-line px-6 py-10 text-center text-graphite">
@@ -72,6 +90,7 @@ export default function QuestionsTable({ questions }: { questions: QuestionOut[]
       <tbody>
         {questions.map((q) => {
           const isChild = Boolean(q.parent_no);
+          const figureCount = figureCounts.get(q.question_no) ?? 0;
 
           return (
             <tr

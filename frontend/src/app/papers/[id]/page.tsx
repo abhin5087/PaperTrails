@@ -111,7 +111,7 @@ export default async function PaperDetailPage({
             </span>
           )}
         </h2>
-        <QuestionsTable questions={paper.questions} />
+        <QuestionsTable questions={paper.questions} figures={paper.figures} />
       </section>
 
       {paper.figures.length > 0 && (

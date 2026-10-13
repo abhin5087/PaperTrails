@@ -49,6 +49,10 @@ class FigureOut(BaseModel):
     width_px: int | None
     height_px: int | None
     note: str | None
+    #: Detectors that contributed this figure's geometry.
+    sources: list[str] = []
+    #: Edges where the figure's content reaches its boundary.
+    clipped_edges: list[str] = []
     #: Endpoint serving the cropped image, when one was produced.
     image_url: str | None = None
 

@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from ..config import FIGURE_DIR, JSON_DIR, PDF_DIR
 from ..models import Course, Figure, Paper, Question
-from . import confidence, pipeline
+from . import confidence, figure_detector, pipeline
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,12 @@ def run_pipeline(db: Session, file_bytes: bytes, original_filename: str) -> Pape
     """Process an uploaded PDF and persist everything extracted from it."""
     pdf_path = _save_upload(file_bytes, original_filename)
 
-    result = pipeline.extract(str(pdf_path), figures_dir=FIGURE_DIR)
+    # The figure trace goes to the JSON sidecar, never to an API response:
+    # it is debugging material, not part of the paper.
+    figure_trace = figure_detector.FigureTrace()
+    result = pipeline.extract(
+        str(pdf_path), figures_dir=FIGURE_DIR, figure_trace=figure_trace
+    )
     header = result.header
     max_marks = _as_int(header.get("max_marks"))
 
@@ -127,6 +132,8 @@ def run_pipeline(db: Session, file_bytes: bytes, original_filename: str) -> Pape
                 question_no=figure.question_no,
                 kind=figure.kind,
                 detector=figure.detector,
+                sources=list(figure.sources),
+                clipped_edges=list(figure.clipped_edges),
                 caption=figure.caption,
                 x0=figure.x0,
                 top=figure.top,
@@ -151,6 +158,7 @@ def run_pipeline(db: Session, file_bytes: bytes, original_filename: str) -> Pape
                     "confidence": score.to_dict(),
                     "questions": pipeline.extract_rows(result.questions),
                     "figures": [f.to_dict() for f in result.figures],
+                    "figure_trace": figure_trace.to_dict(),
                 },
                 indent=2,
             )

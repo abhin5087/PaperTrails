@@ -56,6 +56,10 @@ export interface FigureOut {
   width_px: number | null;
   height_px: number | null;
   note: string | null;
+  /** Detectors that contributed this figure's geometry. */
+  sources: string[];
+  /** Edges where the figure's content reaches its boundary. */
+  clipped_edges: string[];
   image_url: string | null;
 }
 

@@ -205,6 +205,12 @@ class Figure(Base):
 
     kind: Mapped[str] = mapped_column(String(16))  # vector | image | ink
     detector: Mapped[str | None] = mapped_column(String(32))
+
+    # Every detector that contributed geometry, and the edges where the
+    # figure's content reaches its own boundary.  Kept so a questionable crop
+    # can be explained after the fact.
+    sources: Mapped[list] = mapped_column(JSON, default=list)
+    clipped_edges: Mapped[list] = mapped_column(JSON, default=list)
     caption: Mapped[str | None] = mapped_column(Text)
 
     x0: Mapped[float] = mapped_column(Float)

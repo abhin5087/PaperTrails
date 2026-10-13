@@ -374,7 +374,9 @@ def detect_pdf_type(pdf) -> str:
     return "ocr_text"
 
 
-def extract(pdf_path: str, *, figures_dir: Path | None = None) -> ExtractionResult:
+def extract(pdf_path: str, *, figures_dir: Path | None = None,
+            figure_trace: "figure_detector.FigureTrace | None" = None,
+            ) -> ExtractionResult:
     """Run the whole pipeline over one PDF."""
     path = str(pdf_path)
 
@@ -422,14 +424,13 @@ def extract(pdf_path: str, *, figures_dir: Path | None = None) -> ExtractionResu
         lines = chosen.lines if chosen else []
         figures = figure_detector.detect_figures(
             pdf,
+            trace=figure_trace,
             page_images=page_images,
             lines=lines,
             use_ink_detector=(
                 pdf_type in ("scanned", "ocr_text") and page_images is not None
             ),
         )
-        figure_detector.grow_to_labels(figures, lines)
-        figure_detector.attach_captions(figures, lines)
 
     # Re-run boundary detection with the figure regions known, so that
     # anything sitting inside a diagram can no longer open a question.
@@ -453,7 +454,18 @@ def extract(pdf_path: str, *, figures_dir: Path | None = None) -> ExtractionResu
             )
 
     if chosen is not None:
+        # Masthead and header-table regions belong to the page, not to a
+        # question, and are removed before anything is attributed or cropped.
+        figures = figure_detector.drop_page_furniture(
+            figures, chosen.questions, trace=figure_trace
+        )
         figure_detector.associate_with_questions(figures, chosen.questions)
+
+        # The trace's final list is written inside detect_figures, before
+        # furniture is dropped and questions are attributed; refresh it so the
+        # debug artefact matches what the paper actually ends up with.
+        if figure_trace is not None:
+            figure_trace.final = [f.to_dict() for f in figures]
         apply_distribution_marks(chosen.header, chosen.questions)
 
     crop_attempted = figures_dir is not None and bool(figures)

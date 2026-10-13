@@ -49,7 +49,7 @@ export default function UploadPage() {
             </div>
           )}
 
-          <QuestionsTable questions={result.questions} />
+          <QuestionsTable questions={result.questions} figures={result.figures} />
 
           {result.figures.length > 0 && (
             <div className="mt-10">

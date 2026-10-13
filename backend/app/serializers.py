@@ -13,6 +13,8 @@ def to_figure(f: Figure) -> FigureOut:
         width_px=f.width_px,
         height_px=f.height_px,
         note=f.note,
+        sources=list(f.sources or []),
+        clipped_edges=list(f.clipped_edges or []),
         image_url=f"/api/figures/{f.id}/image" if f.image_path else None,
     )
 

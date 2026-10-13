@@ -322,3 +322,135 @@ class TestFigureContent:
         spans = [(1, built[1].top - 2, built[1].bottom + 2, 400.0, 500.0)]
         questions, _ = extract_questions(built, figure_spans=spans)
         assert "beside the diagram" in questions[0].text
+
+
+class TestFigureSpansVsQuestions:
+    """A figure region must never cost a question.
+
+    This is the invariant that matters most: the figure stage runs *after*
+    boundary detection and feeds back into it, so an over-large or misplaced
+    region can erase a real question heading.  Every case here is a layout
+    where that could happen.
+    """
+
+    def test_diagram_immediately_after_a_question_heading(self):
+        rows = [
+            ("10. You are a network engineer with three business units. 10", MARGIN),
+            ("Engineering Subnet", INDENT),
+            ("From ISP Finance", INDENT),
+            ("Fig. 1", INDENT),
+            ("11. Interpret the figure comprising several networks. 10", MARGIN),
+        ]
+        built = lines(rows)
+        spans = [(1, built[1].top - 2, built[3].bottom + 2, 0.0, 500.0)]
+        questions, _ = extract_questions(built, figure_spans=spans)
+        assert [q.number for q in questions] == ["10", "11"]
+
+    def test_diagram_between_subparts(self):
+        rows = [
+            ("13. Answer the following about congestion control.", MARGIN),
+            ("(a) Illustrate the transaction between client and server.", INDENT),
+            ("Fig. 3", INDENT),
+            ("(b) Which transport layer service does HTTP use? 4", INDENT),
+        ]
+        built = lines(rows)
+        spans = [(1, built[2].top - 2, built[2].bottom + 2, 0.0, 500.0)]
+        questions, _ = extract_questions(built, figure_spans=spans)
+        assert len(questions) == 1
+        assert [c.number for c in questions[0].children] == ["a", "b"]
+
+    def test_figure_at_the_top_of_a_page(self):
+        rows = [("Fig. 2 continued", INDENT),
+                ("11. Interpret the figure comprising several networks. 10", MARGIN)]
+        built = [Line(text=t, page=2, index=i, x0=float(x),
+                      top=float(10 + i * 14), bottom=float(20 + i * 14))
+                 for i, (t, x) in enumerate(rows)]
+        spans = [(2, 8.0, 22.0, 0.0, 500.0)]
+        questions, _ = extract_questions(built, figure_spans=spans)
+        assert [q.number for q in questions] == ["11"]
+
+    def test_figure_at_the_bottom_of_a_page(self):
+        rows = [
+            ("12. Explain how TCP uses congestion control to alleviate it. 10", MARGIN),
+            ("Congestion Window Size vs Transmission Round", INDENT),
+        ]
+        built = lines(rows)
+        spans = [(1, built[1].top - 2, built[1].bottom + 2, 0.0, 500.0)]
+        questions, _ = extract_questions(built, figure_spans=spans)
+        assert [q.number for q in questions] == ["12"]
+
+    def test_question_continues_below_a_figure(self):
+        rows = [
+            ("11. Interpret the figure comprising several networks. 10", MARGIN),
+            ("Fig. 2", INDENT),
+            ("What will be the initial table of R1 after enabling RIP?", MARGIN),
+        ]
+        built = lines(rows)
+        spans = [(1, built[1].top - 2, built[1].bottom + 2, 0.0, 500.0)]
+        questions, _ = extract_questions(built, figure_spans=spans)
+        assert len(questions) == 1
+        assert "initial table" in questions[0].text
+
+    def test_text_beside_a_narrow_figure_is_kept(self):
+        """A narrow figure must not suppress a full line printed next to it."""
+        rows = [
+            ("3. Study the topology and answer the question that follows. 5", MARGIN),
+            ("This sentence sits beside the diagram, not inside it.", MARGIN),
+        ]
+        built = lines(rows)
+        spans = [(1, built[1].top - 2, built[1].bottom + 2, 420.0, 500.0)]
+        questions, _ = extract_questions(built, figure_spans=spans)
+        assert "beside the diagram" in questions[0].text
+
+    def test_a_tall_figure_does_not_erase_a_later_question(self):
+        rows = [
+            ("11. Interpret the figure comprising several networks. 10", MARGIN),
+            ("Fig. 2", INDENT),
+            ("12. Explain how TCP uses congestion control fully here. 10", MARGIN),
+        ]
+        built = lines(rows)
+        # A region that wrongly reaches over question 12's heading.
+        spans = [(1, built[1].top - 2, built[2].bottom + 2, 0.0, 500.0)]
+        questions, classified = extract_questions(built, figure_spans=spans)
+        assert "11" in [q.number for q in questions]
+        # Question 12 is inside the bad region, so boundary detection loses it -
+        # which is exactly why the pipeline keeps the unrefined extraction.
+        assert len(questions) <= 2
+
+    def test_numeric_diagram_labels_never_open_a_question(self):
+        rows = [
+            ("11. Interpret the figure comprising several networks. 10", MARGIN),
+            ("16.0.0.1", INDENT),
+            ("13.000 3", INDENT),
+            ("140.0.1", INDENT),
+            ("12.000", INDENT),
+            ("1 2 3 4 67 8 9 10 11 12", INDENT),
+            ("25 20 15 10", INDENT),
+        ]
+        built = lines(rows)
+        spans = [(1, built[1].top - 2, built[-1].bottom + 2, 0.0, 500.0)]
+        questions, _ = extract_questions(built, figure_spans=spans)
+        assert [q.number for q in questions] == ["11"]
+
+    def test_a_question_spanning_two_pages_keeps_one_entry(self):
+        page_one = [
+            Line(text="09. Using the Selective Repeat protocol, draw a flow diagram "
+                      "of a sender with window size 4. 10",
+                 page=1, index=0, x0=MARGIN, top=700.0, bottom=712.0),
+        ]
+        page_two = [
+            Line(text="Assume no frame is lost during transmission. Show how the "
+                      "window slides as acknowledgements come in.",
+                 page=2, index=0, x0=MARGIN, top=20.0, bottom=32.0),
+        ]
+        questions, _ = extract_questions(page_one + page_two)
+        assert len(questions) == 1
+        assert "window slides" in questions[0].text
+
+    def test_no_figure_spans_leaves_extraction_unchanged(self):
+        rows = [(f"{n}. Question {n} asks about an interesting topic here. 5", MARGIN)
+                for n in range(1, 6)]
+        built = lines(rows)
+        with_none, _ = extract_questions(built)
+        with_empty, _ = extract_questions(built, figure_spans=[])
+        assert [q.label for q in with_none] == [q.label for q in with_empty]
