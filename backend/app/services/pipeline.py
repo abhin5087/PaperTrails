@@ -362,7 +362,7 @@ def extract(pdf_path: str, *, figures_dir: Path | None = None) -> ExtractionResu
     # Re-run boundary detection with the figure regions known, so that
     # anything sitting inside a diagram can no longer open a question.
     if chosen is not None and figures:
-        spans = [(f.page, f.top, f.bottom) for f in figures]
+        spans = [(f.page, f.top, f.bottom, f.x0, f.x1) for f in figures]
         chosen.questions, chosen.classified = extract_questions(
             chosen.lines, figure_spans=spans
         )

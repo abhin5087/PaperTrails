@@ -152,3 +152,36 @@ class TestLexicon:
         lexicon = load_lexicon()
         for word in ("congestion", "subnet", "microeconomics", "equimarginal"):
             assert word in lexicon
+
+
+class TestFusedWords:
+    """OCR drops the space after a one-letter word: 'A consumer' -> 'Aconsumer'."""
+
+    @pytest.mark.parametrize(
+        "fused,split",
+        [
+            ("Aconsumer", "A consumer"),
+            ("aconsumer", "a consumer"),
+            ("Adiagram", "A diagram"),
+            ("Irecommend", "I recommend"),
+        ],
+    )
+    def test_fused_article_is_separated(self, fused, split):
+        assert correct_text(fused).corrected_text == split
+
+    @pytest.mark.parametrize(
+        "word", ["carpet", "around", "about", "apart", "item", "image", "income"]
+    )
+    def test_ordinary_words_are_never_torn_apart(self, word):
+        assert correct_text(word).corrected_text == word
+
+    def test_short_remainders_are_refused(self):
+        assert correct_text("Acat").corrected_text == "Acat"
+
+    def test_the_split_is_recorded(self):
+        result = correct_text("Aconsumer spends her income.")
+        assert result.corrections[0].rule == "split:fused_article"
+
+    def test_splitting_is_idempotent(self):
+        once = correct_text("Aconsumer spends her income.").corrected_text
+        assert correct_text(once).corrected_text == once

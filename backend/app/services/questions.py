@@ -23,7 +23,13 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from .marks import Marks, combine, extract_marks, split_trailing_marks
+from .marks import (
+    Marks,
+    combine,
+    extract_marks,
+    find_marks,
+    split_trailing_marks,
+)
 
 # "1." / "2)" / "03." - the separator is required so a bare number in a chart
 # axis cannot open a question.
@@ -242,8 +248,11 @@ def classify_lines(
 ) -> list[Classified]:
     """Decide what every line is.
 
-    ``figure_spans`` is a list of ``(page, top, bottom)`` rectangles known to
-    contain a figure; lines inside one are never treated as question labels.
+    ``figure_spans`` holds rectangles known to contain a figure, as either
+    ``(page, top, bottom)`` or ``(page, top, bottom, x0, x1)``.  A line inside
+    one is never a question label, and its text belongs to the figure rather
+    than to the question body - diagram labels and axis ticks are not part of
+    what the question asks.
     """
     if margin is None:
         margin = estimate_left_margin(lines)
@@ -252,10 +261,22 @@ def classify_lines(
     def inside_figure(line: Line) -> bool:
         if line.top is None:
             return False
-        return any(
-            page == line.page and top <= line.top <= bottom
-            for page, top, bottom in figure_spans
-        )
+
+        for span in figure_spans:
+            page, top, bottom = span[0], span[1], span[2]
+            if page != line.page or not (top <= line.top <= bottom):
+                continue
+
+            # Without horizontal bounds, vertical containment is all we have.
+            if len(span) < 5 or line.x0 is None:
+                return True
+
+            x0, x1 = span[3], span[4]
+            line_x1 = line.x1 if line.x1 is not None else line.x0
+            if line_x1 >= x0 and line.x0 <= x1:
+                return True
+
+        return False
 
     out: list[Classified] = []
     seen_numbers: set[int] = set()
@@ -275,6 +296,13 @@ def classify_lines(
 
         if PAGE_FOOTER_RE.fullmatch(text):
             out.append(Classified(line, "footer", reason="page footer"))
+            continue
+
+        # Text drawn as part of a diagram - node names, IP labels, axis ticks.
+        # It belongs to the figure, not to the question's wording.
+        if inside_figure(line):
+            out.append(Classified(line, "figure_content", body=text,
+                                  reason="inside a figure region"))
             continue
 
         if FIGURE_CAPTION_RE.match(text):
@@ -448,8 +476,27 @@ def build_questions(classified: list[Classified]) -> list[Question]:
     current: Question | None = None
     current_sub: Question | None = None
 
+    # A marks value printed on a caption or inside a diagram is still the
+    # question's marks, so it is kept aside rather than thrown away with the
+    # figure text it happened to share a line with.
+    deferred_marks: dict[int, Marks] = {}
+
     def flush_text(target: Question, chunk: str) -> None:
         target.text = f"{target.text} {chunk}".strip()
+
+    def defer_marks(target: Question | None, text: str) -> None:
+        """Take a marks value off a caption or diagram line.
+
+        Only explicit notation counts here - ``[5]``, ``(5 Marks)``.  A bare
+        number inside a figure is an axis tick or a node label, never a mark,
+        so the trailing-number rule used for body text is deliberately not
+        applied.
+        """
+        if target is None:
+            return
+        found = find_marks(text)
+        if found.raw is not None:
+            deferred_marks.setdefault(id(target), found)
 
     for item in classified:
         if item.kind == "question":
@@ -477,7 +524,7 @@ def build_questions(classified: list[Classified]) -> list[Question]:
             current.children.append(current_sub)
             continue
 
-        if item.kind in ("body", "caption"):
+        if item.kind == "body":
             target = current_sub or current
             if target is not None:
                 flush_text(target, item.body or item.line.text.strip())
@@ -485,13 +532,23 @@ def build_questions(classified: list[Classified]) -> list[Question]:
                     target.bottom = item.line.bottom
             continue
 
+        if item.kind in ("caption", "figure_content"):
+            # The wording belongs to the figure, but a marks value on that
+            # line belongs to the question.
+            defer_marks(current_sub or current, item.body or item.line.text.strip())
+            continue
+
     # Marks come out of the assembled text, not line by line, so a value
     # printed on a continuation line still reaches the right question.
     for question in questions:
         for child in question.children:
             child.text, child.marks = extract_marks(child.text)
+            if child.marks.raw is None and id(child) in deferred_marks:
+                child.marks = deferred_marks[id(child)]
 
         question.text, question.marks = extract_marks(question.text)
+        if question.marks.raw is None and id(question) in deferred_marks:
+            question.marks = deferred_marks[id(question)]
 
         moved = _reattribute_trailing_marks(question)
 

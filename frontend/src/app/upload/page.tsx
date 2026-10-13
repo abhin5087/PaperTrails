@@ -5,6 +5,8 @@ import Link from "next/link";
 import UploadDropzone from "@/components/UploadDropzone";
 import ConfidenceBadge from "@/components/ConfidenceBadge";
 import QuestionsTable from "@/components/QuestionsTable";
+import DiagnosticsPanel from "@/components/DiagnosticsPanel";
+import FigureGallery from "@/components/FigureGallery";
 import type { PaperDetail } from "@/lib/types";
 
 export default function UploadPage() {
@@ -41,20 +43,22 @@ export default function UploadPage() {
             <ConfidenceBadge value={result.confidence} level={result.confidence_level} />
           </div>
 
-          {result.notes.length > 0 && (
-            <div className="mb-8 border-l-2 border-stamp/60 bg-stamp/5 px-4 py-3">
-              <div className="mb-1 text-xs uppercase tracking-wide text-stamp">
-                Extraction notes
-              </div>
-              <ul className="space-y-1 text-sm text-ink">
-                {result.notes.map((note, i) => (
-                  <li key={i}>{note}</li>
-                ))}
-              </ul>
+          {result.diagnostics.length > 0 && (
+            <div className="mb-8">
+              <DiagnosticsPanel diagnostics={result.diagnostics} />
             </div>
           )}
 
           <QuestionsTable questions={result.questions} />
+
+          {result.figures.length > 0 && (
+            <div className="mt-10">
+              <h2 className="mb-3 font-serif text-xl text-ink">
+                Figures ({result.figures.length})
+              </h2>
+              <FigureGallery figures={result.figures} />
+            </div>
+          )}
 
           <div className="mt-8 flex gap-4 text-sm">
             <Link href={`/papers/${result.id}`} className="text-rule hover:underline">

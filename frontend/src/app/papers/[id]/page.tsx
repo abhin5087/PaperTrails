@@ -3,15 +3,34 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { api } from "@/lib/api";
 import ConfidenceBadge from "@/components/ConfidenceBadge";
+import DiagnosticsPanel from "@/components/DiagnosticsPanel";
+import FigureGallery from "@/components/FigureGallery";
 import QuestionsTable from "@/components/QuestionsTable";
 
 export const dynamic = "force-dynamic";
 
 const PDF_TYPE_LABEL: Record<string, string> = {
   vector: "Vector (ruled table)",
-  ocr_text: "OCR text (no table)",
+  ocr_text: "Text layer (no table)",
   scanned: "Scanned image",
 };
+
+/** How the text was obtained, in plain words. */
+function sourceLabel(paper: {
+  ocr_engine: string | null;
+  ocr_config: string | null;
+  ocr_confidence: number | null;
+}): string {
+  if (!paper.ocr_engine) return "PDF text layer";
+
+  const parts = [`OCR (${paper.ocr_engine}`];
+  if (paper.ocr_config) parts.push(`, ${paper.ocr_config}`);
+  parts.push(")");
+  if (paper.ocr_confidence !== null) {
+    parts.push(` · ${Math.round(paper.ocr_confidence)}% confidence`);
+  }
+  return parts.join("");
+}
 
 export default async function PaperDetailPage({
   params,
@@ -27,17 +46,25 @@ export default async function PaperDetailPage({
 
   const metaRows: [string, string | number | null][] = [
     ["Course", paper.course_code],
+    ["Course name", paper.course_name],
     ["Semester", paper.semester],
     ["Academic year", paper.academic_year],
     ["Exam type", paper.exam_type],
     ["Slot", paper.slot],
     ["Duration", paper.duration],
     ["Exam date", paper.exam_date],
+    ["Exam time", paper.exam_time],
     ["Max marks", paper.max_marks],
     ["Marks extracted", paper.marks_extracted],
+    ["Pages", paper.page_count || null],
     ["Source", PDF_TYPE_LABEL[paper.pdf_type] ?? paper.pdf_type],
-    ["Extraction method", paper.extraction_method],
+    ["Read with", sourceLabel(paper)],
   ];
+
+  const topLevel = paper.questions.filter((q) => !q.parent_no).length;
+  const unresolved = paper.questions.filter(
+    (q) => q.marks === null && q.marks_raw !== null,
+  ).length;
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -63,30 +90,38 @@ export default async function PaperDetailPage({
             <div className="text-xs uppercase tracking-wide text-graphite">
               {label}
             </div>
-            <div className="mt-0.5 text-ink">{value ?? "\u2014"}</div>
+            <div className="mt-0.5 text-ink">{value ?? "—"}</div>
           </div>
         ))}
       </section>
 
-      {paper.notes.length > 0 && (
-        <section className="mb-10 border-l-2 border-stamp/60 bg-stamp/5 px-4 py-3">
-          <div className="mb-1 text-xs uppercase tracking-wide text-stamp">
-            Extraction notes
-          </div>
-          <ul className="space-y-1 text-sm text-ink">
-            {paper.notes.map((note, i) => (
-              <li key={i}>{note}</li>
-            ))}
-          </ul>
+      {paper.diagnostics.length > 0 && (
+        <section className="mb-10">
+          <h2 className="mb-3 font-serif text-xl text-ink">Extraction report</h2>
+          <DiagnosticsPanel diagnostics={paper.diagnostics} />
         </section>
       )}
 
-      <section>
+      <section className="mb-10">
         <h2 className="mb-3 font-serif text-xl text-ink">
-          Questions ({paper.questions.length})
+          Questions ({topLevel})
+          {unresolved > 0 && (
+            <span className="ml-2 text-sm font-normal text-stamp">
+              {unresolved} with unresolved marks
+            </span>
+          )}
         </h2>
         <QuestionsTable questions={paper.questions} />
       </section>
+
+      {paper.figures.length > 0 && (
+        <section className="mb-10">
+          <h2 className="mb-3 font-serif text-xl text-ink">
+            Figures ({paper.figures.length})
+          </h2>
+          <FigureGallery figures={paper.figures} />
+        </section>
+      )}
     </div>
   );
 }

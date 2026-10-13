@@ -157,6 +157,14 @@ SUBSTITUTION_RULES: tuple[tuple[str, str], ...] = (
 #: Characters OCR may drop from the front of a word ("etwork" -> "network").
 LEADING_RESTORE = "abcdefghilmnoprstuvw"
 
+#: Single-letter words that OCR fuses onto the next word ("Aconsumer").
+#: Deliberately limited to these two: allowing any split would turn
+#: "carpet" into "car pet".
+FUSED_ARTICLES = ("a", "i")
+
+#: The remainder of a fused pair must be at least this long to be believed.
+MIN_FUSED_REMAINDER = 4
+
 _TOKEN_RE = re.compile(r"[^\W\d_]+(?:['’-][^\W\d_]+)*|\S+|\s+", re.UNICODE)
 _WORD_RE = re.compile(r"^[^\W\d_]+(?:['’-][^\W\d_]+)*$", re.UNICODE)
 
@@ -304,6 +312,19 @@ def correct_token(token: str) -> tuple[str, str | None]:
     # enough for a single edit to be meaningful.
     if len(core) < MIN_CORRECTABLE_LENGTH:
         return token, None
+
+    # A fused article: "Aconsumer" for "A consumer".  Only an "a" or "i"
+    # prefix is considered, and only when what follows is a solid word, so an
+    # ordinary word is never torn in two.
+    for article in FUSED_ARTICLES:
+        if not lowered.startswith(article):
+            continue
+        remainder = lowered[len(article):]
+        if len(remainder) < MIN_FUSED_REMAINDER or remainder not in lexicon:
+            continue
+        head = core[: len(article)]
+        tail = core[len(article):]
+        return prefix + f"{head} {tail}" + suffix, "split:fused_article"
 
     accepted: set[str] = set()
     rule_for: dict[str, str] = {}

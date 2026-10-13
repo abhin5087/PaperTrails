@@ -261,3 +261,64 @@ class TestMargin:
         ]
         questions = build_questions(classify_lines(built))
         assert [q.number for q in questions] == ["1"]
+
+
+class TestFigureContent:
+    """Diagram text belongs to the figure, not to the question's wording."""
+
+    ROWS = [
+        ("3. A host is configured with the address 192.168.10.20 and a mask.", MARGIN),
+        ("R1 10.0.0.1", INDENT),
+        ("255.255.255.0", INDENT),
+        ("Figure 1: Sample network topology [5]", INDENT),
+        ("4. Differentiate between a switch and a router by layer. 5", MARGIN),
+    ]
+
+    def spans(self, built):
+        """Treat the three diagram lines as one detected figure region."""
+        inside = built[1:4]
+        return [(1, inside[0].top - 2, inside[-1].bottom + 2,
+                 min(ln.x0 for ln in inside) - 5, 500.0)]
+
+    def test_diagram_labels_are_kept_out_of_the_question_text(self):
+        built = lines(self.ROWS)
+        questions, _ = extract_questions(built, figure_spans=self.spans(built))
+        q3 = next(q for q in questions if q.number == "3")
+        assert "10.0.0.1" not in q3.text
+        assert "255.255.255.0" not in q3.text
+        assert "Figure 1" not in q3.text
+
+    def test_the_question_wording_itself_survives(self):
+        built = lines(self.ROWS)
+        questions, _ = extract_questions(built, figure_spans=self.spans(built))
+        q3 = next(q for q in questions if q.number == "3")
+        assert "192.168.10.20" in q3.text  # part of the question, not the figure
+
+    def test_marks_printed_on_a_caption_still_reach_the_question(self):
+        built = lines(self.ROWS)
+        questions, _ = extract_questions(built, figure_spans=self.spans(built))
+        q3 = next(q for q in questions if q.number == "3")
+        assert q3.marks.total == 5
+
+    def test_axis_ticks_are_not_taken_as_marks(self):
+        rows = [
+            ("13. Answer the following about TCP congestion control here.", MARGIN),
+            ("1 2 3 4 5 6 7 8", INDENT),
+            ("Figure 2: Congestion window", INDENT),
+        ]
+        built = lines(rows)
+        spans = [(1, built[1].top - 2, built[2].bottom + 2, 0.0, 500.0)]
+        questions, _ = extract_questions(built, figure_spans=spans)
+        assert questions[0].marks.raw is None
+
+    def test_lines_beside_a_figure_are_not_swallowed(self):
+        """Horizontal bounds stop a figure claiming text printed next to it."""
+        rows = [
+            ("3. Study the topology and answer the question that follows it.", MARGIN),
+            ("This sentence sits beside the diagram, not inside it. 5", MARGIN),
+        ]
+        built = lines(rows)
+        # A narrow figure on the right-hand side of the page.
+        spans = [(1, built[1].top - 2, built[1].bottom + 2, 400.0, 500.0)]
+        questions, _ = extract_questions(built, figure_spans=spans)
+        assert "beside the diagram" in questions[0].text
