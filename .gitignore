@@ -27,3 +27,8 @@ uploads/
 # OS
 .DS_Store
 Thumbs.db
+# Generated test fixtures (rebuilt on demand by the test suite)
+backend/tests/fixtures/generated/
+
+# Distribution archive (rebuilt on demand)
+PaperTrails-complete.zip

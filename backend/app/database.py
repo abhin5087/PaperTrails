@@ -20,10 +20,12 @@ class Base(DeclarativeBase):
     pass
 
 
-def init_db() -> None:
+def init_db() -> dict[str, list[str]]:
+    """Create missing tables and additively migrate existing ones."""
     from . import models  # noqa: F401  (registers tables)
+    from .migrations import run_migrations
 
-    Base.metadata.create_all(engine)
+    return run_migrations(engine)
 
 
 def get_db():

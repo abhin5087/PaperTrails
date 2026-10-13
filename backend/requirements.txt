@@ -4,3 +4,17 @@ python-multipart>=0.0.9
 sqlalchemy>=2.0
 pdfplumber>=0.11
 pydantic>=2.6
+
+# OCR for scanned papers (needs the Tesseract binary and poppler-utils)
+pytesseract>=0.3.10
+pdf2image>=1.17
+pillow>=10.0
+numpy>=1.26
+
+# Figure rendering fallback when poppler is unavailable
+pypdfium2>=4.0
+
+# Tests
+pytest>=8.0
+httpx>=0.27
+reportlab>=4.0
