@@ -1,0 +1,18 @@
+Disposable legacy database: temporary copy
+
+PLANNED (nothing applied yet)
+  create_table: question_embeddings, topic_clusters, figures
+  add_column: 16 additive columns across papers and questions
+  blocked: none
+
+APPLIED
+  added 16 columns; created 3 tables; blocked: none
+
+DATA PRESERVED
+  Legacy courses, papers, and questions rows were preserved.
+  Existing legacy paper and question values remained readable.
+
+IDEMPOTENT RE-RUN
+  No additional changes; no blocked operations.
+
+NOTE: The application's own papertrails.db was not used by this check.
