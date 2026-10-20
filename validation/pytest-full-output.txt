@@ -1,0 +1,12 @@
+Recorded automated test result
+==============================
+
+The supplied archive's validation report records:
+  330 tests passed
+  0 tests failed
+
+The test suite includes API, extraction candidate selection, confidence scoring,
+figures, headers, marks, OCR correction, OCR-unavailable behavior, migrations,
+and question-boundary logic.
+
+This is a summary of the recorded run; tests have not been re-executed by this commit.

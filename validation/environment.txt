@@ -1,0 +1,21 @@
+Environment used for this validation run
+========================================
+python      : Python 3.13.16
+tesseract   : tesseract 5.3.4
+poppler     : pdftoppm version 24.02.0
+node        : v22.22.0 npm 10.9.4
+
+python packages:
+  fastapi                   0.143.0
+  httpx                     0.28.1
+  numpy                     2.5.3
+  pdf2image                 1.17.0
+  pdfplumber                0.11.10
+  pillow                    12.3.0
+  pydantic                  2.13.5
+  pypdfium2                 5.13.0
+  pytesseract               0.3.13
+  pytest                    9.1.1
+  reportlab                 5.0.1
+  SQLAlchemy                2.1.4
+  uvicorn                   0.53.0
