@@ -1,0 +1,23 @@
+Real-paper extraction summary
+==============================
+
+BHUM103L-FAT-A1-2023-2024 (Micro Economics)
+- Image-only scan with no text layer.
+- OCR candidate selected: psm6-block, mean confidence 86.9%.
+- 10 top-level questions extracted.
+- 10 marks each from the paper-wide distribution, total 100.
+- No figures detected.
+- Confidence score: 82.
+- Course name, exam type and semester were not confidently found.
+- Course code was read as BHUM103 (trailing L lost in OCR).
+
+BCSE308L-FAT-C2-2022-2023 (Computer Networks)
+- Scanned paper with an OCR-generated text layer.
+- 13 top-level questions extracted, including multipart questions.
+- Q1-Q6: 5 marks each; Q7-Q13: 10 marks each; total 100.
+- Six figure regions detected and cropped.
+- Confidence reported between 90 and 98.
+- Damaged question labels and mark brackets were handled.
+- Diagram labels, IP addresses and graph ticks did not become phantom questions.
+
+These are recorded results from the supplied archive, not a fresh run in this session.
