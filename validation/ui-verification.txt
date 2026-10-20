@@ -1,0 +1,22 @@
+Recorded browser UI verification
+
+BHUM103L:
+- Detail route: /papers/1
+- Question rows: 10
+- Rows after reload: 10
+- Figures shown: 0
+- Extraction report shown: yes
+- Page body identical after reload: yes
+
+BCSE308L:
+- Detail route: /papers/2
+- Question rows: 17 (13 top-level + 4 subparts)
+- Rows after reload: 17
+- Figures shown: 6
+- Broken images: 0
+- Extraction report shown: yes
+- Page body identical after reload: yes
+
+Papers listed: 2
+Recorded 4xx/5xx responses: none
+Console error: one 404 for /favicon.ico
